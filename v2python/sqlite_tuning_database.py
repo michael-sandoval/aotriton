@@ -145,14 +145,13 @@ class SQLiteKernelTuningDatabaseForArch(CommonKernelTuningDatabaseForArch):
         print(f'SQLite.get_lut {fsels=}')
         print(f'SQLite.get_lut {where_columns=}')
         print(f'SQLite.get_lut {where_values=}')
-        lut_key = tuple([s.compact_signature for s in fsels])
-        if lut_key not in self._lut:
+        if where_values not in self._lut:
             print(f'{selected_rows=}')
             assert selected_rows
-            self._lut[lut_key] = KernelTuningEntryForFunctionalOnGPU(kdesc, self, fsels,
-                                                                     selected_columns, selected_rows,
-                                                                     autotune_keys, perf_meta)
-        return self._lut[lut_key]
+            self._lut[where_values] = KernelTuningEntryForFunctionalOnGPU(kdesc, self, fsels,
+                                                                          selected_columns, selected_rows,
+                                                                          autotune_keys, perf_meta)
+        return self._lut[where_values]
 
     def _cast_argument_selection_to_sqlite3(self, mfsel, value):
         if mfsel.is_tensor:
