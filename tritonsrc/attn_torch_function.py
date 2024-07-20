@@ -113,7 +113,7 @@ TRITON_CONFIG_LIST_BWD_SIZED = [
 @triton.jit
 def sized_tuned_bwd_kernel_dk_dv(
     Q, K, V, B, sm_scale, Out, DO,
-    DK, DV,
+    DK, DV, DB,
     L,
     D,
     stride_qz, stride_qh, stride_qm, stride_qk,
@@ -123,6 +123,7 @@ def sized_tuned_bwd_kernel_dk_dv(
     stride_oz, stride_oh, stride_om, stride_ok,
     stride_dkz, stride_dkh, stride_dkn, stride_dkk,
     stride_dvz, stride_dvh, stride_dvk, stride_dvn,
+    stride_dbz, stride_dbh, stride_dbm, stride_dbn,
     max_seqlens_q, max_seqlens_k,
     head_dim,
     dropout_p,
@@ -138,7 +139,7 @@ def sized_tuned_bwd_kernel_dk_dv(
 ):
     bare_bwd_kernel_dk_dv(
             Q, K, V, B, sm_scale, Out, DO,
-            DK, DV,
+            DK, DV, DB,
             L,
             D,
             stride_qz, stride_qh, stride_qm, stride_qk,
@@ -148,6 +149,7 @@ def sized_tuned_bwd_kernel_dk_dv(
             stride_oz, stride_oh, stride_om, stride_ok,
             stride_dkz, stride_dkh, stride_dkn, stride_dkk,
             stride_dvz, stride_dvh, stride_dvk, stride_dvn,
+            stride_dbz, stride_dbh, stride_dbm, stride_dbn,
             max_seqlens_q, max_seqlens_k,
             head_dim,
             dropout_p,
@@ -169,7 +171,7 @@ def sized_tuned_bwd_kernel_dk_dv(
 @triton.jit
 def sized_tuned_bwd_kernel_dq(
     Q, K, V, B, sm_scale, Out, DO,
-    DQ, DB,
+    DQ,
     L,
     D,
     stride_qz, stride_qh, stride_qm, stride_qk,
@@ -178,7 +180,6 @@ def sized_tuned_bwd_kernel_dq(
     stride_bz, stride_bh, stride_bm, stride_bn,
     stride_oz, stride_oh, stride_om, stride_ok,
     stride_dqz, stride_dqh, stride_dqm, stride_dqk,
-    stride_dbz, stride_dbh, stride_dbm, stride_dbn,
     max_seqlens_q, max_seqlens_k,
     head_dim,
     dropout_p,
@@ -192,7 +193,7 @@ def sized_tuned_bwd_kernel_dq(
     BIAS_TYPE: tl.constexpr,
 ):
     bare_bwd_kernel_dq(Q, K, V, B, sm_scale, Out, DO,
-        DQ, DB,
+        DQ,
         L,
         D,
         stride_qz, stride_qh, stride_qm, stride_qk,
@@ -201,7 +202,6 @@ def sized_tuned_bwd_kernel_dq(
         stride_bz, stride_bh, stride_bm, stride_bn,
         stride_oz, stride_oh, stride_om, stride_ok,
         stride_dqz, stride_dqh, stride_dqm, stride_dqk,
-        stride_dbz, stride_dbh, stride_dbm, stride_dbn,
         max_seqlens_q, max_seqlens_k,
         head_dim,
         dropout_p,
@@ -471,8 +471,8 @@ class _attention(torch.autograd.Function):
             BLOCK_M = 128
             BLOCK_N = 64
         if q.dtype == torch.float32:
-            BLOCK_M = max(16, BLOCK_M // 2)
-            BLOCK_N = max(16, BLOCK_N // 2)
+            BLOCK_M //= 2
+            BLOCK_N //= 2
         # debug_mask = torch.zeros((q.shape[0], q.shape[1], max_seqlens_q, max_seqlens_k), device=q.device, dtype=ctx.encoded_softmax.dtype)
         grid_dk_dv = lambda META: (
             triton.cdiv(max_seqlens_k, META['BLOCK_N']),
@@ -485,13 +485,13 @@ class _attention(torch.autograd.Function):
             stride_dbz, stride_dbh, stride_dbm, stride_dbn = 0,0,0,0
         else:
             db.fill_(float('nan'))
-        print(f'backward {ctx.bias_type=} {ctx.autotune=} {BLOCK_M=} {BLOCK_N=} {stride_dbz=} {stride_dbh=} {stride_dbm=} {stride_dbn=}')
+        print(f'{ctx.bias_type=} {BLOCK_M=} {BLOCK_N=} {stride_dbz=} {stride_dbh=} {stride_dbm=} {stride_dbn=}')
         if k.requires_grad and v.requires_grad:
             if ctx.autotune:
                 sized_tuned_bwd_kernel_dk_dv[grid_dk_dv](
                     q, k, v, b, ctx.sm_scale,
                     o, do,
-                    dk, dv,
+                    dk, dv, db,
                     L, delta,
                     q.stride(0), q.stride(1), q.stride(2), q.stride(3),
                     k.stride(0), k.stride(1), k.stride(2), k.stride(3),
@@ -500,6 +500,7 @@ class _attention(torch.autograd.Function):
                     do.stride(0), do.stride(1), do.stride(2), do.stride(3),
                     dk.stride(0), dk.stride(1), dk.stride(2), dk.stride(3),
                     dv.stride(0), dv.stride(1), dv.stride(2), dv.stride(3),
+                    stride_dbz, stride_dbh, stride_dbm, stride_dbn,
                     max_seqlens_q=max_seqlens_q,
                     max_seqlens_k=max_seqlens_k,
                     head_dim=Lk,
@@ -549,7 +550,7 @@ class _attention(torch.autograd.Function):
                 bare_bwd_kernel_dk_dv[grid_dk_dv](
                     q, k, v, b, ctx.sm_scale,
                     o, do,
-                    dk, dv,
+                    dk, dv, db,
                     L, delta,
                     q.stride(0), q.stride(1), q.stride(2), q.stride(3),
                     k.stride(0), k.stride(1), k.stride(2), k.stride(3),
@@ -558,6 +559,7 @@ class _attention(torch.autograd.Function):
                     do.stride(0), do.stride(1), do.stride(2), do.stride(3),
                     dk.stride(0), dk.stride(1), dk.stride(2), dk.stride(3),
                     dv.stride(0), dv.stride(1), dv.stride(2), dv.stride(3),
+                    stride_dbz, stride_dbh, stride_dbm, stride_dbn,
                     max_seqlens_q=max_seqlens_q,
                     max_seqlens_k=max_seqlens_k,
                     head_dim=Lk,
@@ -601,7 +603,7 @@ class _attention(torch.autograd.Function):
                 sized_tuned_bwd_kernel_dq[grid_dq](
                     q, k, v, b, ctx.sm_scale,
                     o, do,
-                    dq, db,
+                    dq,
                     L, delta,
                     q.stride(0), q.stride(1), q.stride(2), q.stride(3),
                     k.stride(0), k.stride(1), k.stride(2), k.stride(3),
@@ -609,7 +611,6 @@ class _attention(torch.autograd.Function):
                     b.stride(0), b.stride(1), b.stride(2), b.stride(3),
                     do.stride(0), do.stride(1), do.stride(2), do.stride(3),
                     dq.stride(0), dq.stride(1), dq.stride(2), dq.stride(3),
-                    stride_dbz, stride_dbh, stride_dbm, stride_dbn,
                     max_seqlens_q=max_seqlens_q,
                     max_seqlens_k=max_seqlens_k,
                     head_dim=Lk,
@@ -658,7 +659,7 @@ class _attention(torch.autograd.Function):
                 bare_bwd_kernel_dq[grid_dq](
                     q, k, v, b, ctx.sm_scale,
                     o, do,
-                    dq, db,
+                    dq,
                     L, delta,
                     q.stride(0), q.stride(1), q.stride(2), q.stride(3),
                     k.stride(0), k.stride(1), k.stride(2), k.stride(3),
@@ -666,7 +667,6 @@ class _attention(torch.autograd.Function):
                     b.stride(0), b.stride(1), b.stride(2), b.stride(3),
                     do.stride(0), do.stride(1), do.stride(2), do.stride(3),
                     dq.stride(0), dq.stride(1), dq.stride(2), dq.stride(3),
-                    stride_dbz, stride_dbh, stride_dbm, stride_dbn,
                     max_seqlens_q=max_seqlens_q,
                     max_seqlens_k=max_seqlens_k,
                     head_dim=Lk,
