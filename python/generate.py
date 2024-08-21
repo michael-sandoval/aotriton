@@ -6,6 +6,7 @@ import io
 import shutil
 import argparse
 from pathlib import Path
+import os
 
 SOURCE_PATH = Path(__file__).resolve()
 COMPILER = SOURCE_PATH.parent / 'compile.py'
@@ -48,7 +49,8 @@ def main():
     args = parse()
     build_dir = Path(args.build_dir)
     with open(build_dir / 'Makefile.compile', 'w') as f:
-        print('LIBHSA_RUNTIME64=/opt/rocm/lib/libhsa-runtime64.so\n', file=f)
+        frontier_path = os.environ['ROCM_PATH']
+        print(f'LIBHSA_RUNTIME64={frontier_path}/lib/libhsa-runtime64.so\n', file=f)
         makefile_content = io.StringIO()
         per_kernel_targets = []
         for k in rules.kernels:

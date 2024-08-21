@@ -8,6 +8,7 @@ import shutil
 import argparse
 import json
 from pathlib import Path
+import os
 
 SOURCE_PATH = Path(__file__).resolve()
 COMPILER = SOURCE_PATH.parent / 'compile.py'
@@ -79,7 +80,8 @@ def main():
     fn = 'Bare.compile' if args.bare_mode else 'Makefile.compile'
     with open(build_dir / fn, 'w') as f:
         if not args.bare_mode:
-            print('LIBHSA_RUNTIME64=/opt/rocm/lib/libhsa-runtime64.so\n', file=f)
+            frontier_path = os.environ['ROCM_PATH']
+            print(f'LIBHSA_RUNTIME64={frontier_path}/lib/libhsa-runtime64.so\n', file=f)
         makefile_content = io.StringIO()
         per_kernel_targets = []
         for k in triton_kernels:

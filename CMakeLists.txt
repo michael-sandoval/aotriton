@@ -9,6 +9,7 @@ add_subdirectory(third_party/pybind11)
 find_package(Python3 COMPONENTS Interpreter REQUIRED)
 
 set(CMAKE_CXX_COMPILER hipcc)
+set(ROCM_PATH $ENV{ROCM_PATH})
 
 set(VENV_DIR "${CMAKE_CURRENT_BINARY_DIR}/venv" CACHE STRING "Virtual Environment Directory")
 set(AOTRITON_HIPCC_PATH "hipcc" CACHE STRING "Set HIPCC Path")
@@ -18,7 +19,7 @@ option(AOTRITON_ENABLE_ASAN "Enable Address Sanitizer. Implies -g" OFF)
 option(AOTRITON_BUILD_FOR_TUNING "Build all GPU kernels and set -DAOTRITON_BUILD_FOR_TUNING=1 (=0 otherwise)" OFF)
 set(AOTRITON_GPU_BUILD_TIMEOUT "8.0" CACHE STRING "GPU kernel compiler times out after X minutes. 0 for indefinite. Highly recommended if AOTRITON_BUILD_FOR_TUNING=On.")
 set(TARGET_GPUS "MI200;MI300X;Navi31" CACHE STRING "Target Architecture (Note here uses Trade names)")
-set(AMDHSA_LD_PRELOAD "/opt/rocm/lib/libhsa-runtime64.so" CACHE STRING "Workaround of libamdhip64.so.5: undefined symbol: hsa_amd_memory_async_copy_on_engine")
+set(AMDHSA_LD_PRELOAD "${ROCM_PATH}/lib/libhsa-runtime64.so" CACHE STRING "Workaround of libamdhip64.so.5: undefined symbol: hsa_amd_memory_async_copy_on_engine")
 
 # GPU kernel compression related options
 option(AOTRITON_COMPRESS_KERNEL "Enable GPU kernel compression with zstd. Fail when zstd is unavailable. Only effective for AOTriton API V2" ON)
@@ -59,7 +60,7 @@ if(AOTRITON_COMPRESS_KERNEL)
     endif()
 endif()
 
-set(AOTRITON_EXTRA_COMPILER_OPTIONS "-I/opt/rocm/include/ ")
+set(AOTRITON_EXTRA_COMPILER_OPTIONS "-I${ROCM_PATH}/include/ ")
 if(AOTRITON_ENABLE_ASAN)
     set(AOTRITON_EXTRA_COMPILER_OPTIONS "${AOTRITON_EXTRA_COMPILER_OPTIONS} -g -fsanitize=address -fno-omit-frame-pointer")
     set(CMAKE_CXX_FLAGS  "${CMAKE_CXX_FLAGS} ${AOTRITON_EXTRA_COMPILER_OPTIONS}")
